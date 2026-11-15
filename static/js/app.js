@@ -479,62 +479,84 @@
   }
 
   /* Contact form (email is the only required field) */
-  const form = $("#form");
-  const status = $("#status");
-  const sendButton = $("#send");
+  
+/* Contact form */
+const form = $("#form");
+const status = $("#status");
+const sendButton = $("#send");
 
-  if (form && status && sendButton) {
-    form.addEventListener("submit", async event => {
-      event.preventDefault();
+if (form && status && sendButton) {
+  form.addEventListener("submit", async event => {
+    event.preventDefault();
 
-      const emailValue = (form.elements["email"]?.value || "").trim();
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(emailValue)) {
-        status.className = "err";
-        status.textContent = "Please enter a valid email address.";
-        return;
-      }
+    const payload = Object.fromEntries(
+      [...new FormData(form)].map(([key, value]) => [
+        key,
+        String(value).trim()
+      ])
+    );
 
-      status.className = "";
-      status.textContent = "";
-      sendButton.disabled = true;
-      sendButton.textContent = "Sending…";
+    // Frontend validation
+    if (!payload.name || payload.name.length < 2) {
+      status.className = "err";
+      status.textContent = "Please enter your name (at least 2 characters).";
+      return;
+    }
 
-      try {
-        // Drop empty fields so only the email is required
-        const payload = Object.fromEntries(
-          [...new FormData(form)].filter(([, v]) => String(v).trim() !== "")
-        );
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(payload.email || "")) {
+      status.className = "err";
+      status.textContent = "Please enter a valid email address.";
+      return;
+    }
 
-        const response = await fetch("/api/contact", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
+    if (!payload.message || payload.message.length < 10) {
+      status.className = "err";
+      status.textContent = "Please enter a message of at least 3 characters.";
+      return;
+    }
 
-        const result = await response.json();
+    status.className = "";
+    status.textContent = "";
+    sendButton.disabled = true;
+    sendButton.textContent = "Sending…";
 
-        if (!response.ok) {
+    try {
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        const detail = result.detail;
+
+        if (Array.isArray(detail)) {
           throw new Error(
-            Array.isArray(result.detail)
-              ? "Please enter a valid email address."
-              : result.detail
+            detail.map(error => error.msg).join(". ")
           );
         }
 
-        status.className = "ok";
-        status.textContent = result.detail;
-        form.reset();
-      } catch (error) {
-        status.className = "err";
-        status.textContent =
-          error.message || "Could not send. Please email me directly.";
-      } finally {
-        sendButton.disabled = false;
-        sendButton.textContent = "Send message";
+        throw new Error(
+          detail || "Unable to send your message."
+        );
       }
-    });
-  }
 
+      status.className = "ok";
+      status.textContent = result.detail;
+      form.reset();
+
+    } catch (error) {
+      status.className = "err";
+      status.textContent =
+        error.message || "Could not send. Please try again.";
+    } finally {
+      sendButton.disabled = false;
+      sendButton.textContent = "Send message";
+    }
+  });
+}
   /* Visitor counter */
   fetch("/api/visit", { method: "POST" })
     .then(response => response.json())
